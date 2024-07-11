@@ -1,0 +1,12 @@
+apiVersion: cloud.redhat.com/v1alpha1
+kind: NavTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: navtemplate
+    app.kubernetes.io/instance: navtemplate-sample
+    app.kubernetes.io/part-of: frontend-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: frontend-operator
+  name: navtemplate-sample
+spec:
+  # TODO(user): Add fields here

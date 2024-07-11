@@ -916,3 +916,169 @@ var _ = ginkgo.Describe("Dependencies", func() {
 		})
 	})
 })
+
+var _ = ginkgo.Describe("Navigation templates", func() {
+	const (
+		FrontendName      = "frontend-one"
+		SectionName       = "section-one"
+		FrontendName2     = "frontend-two"
+		SectionName2      = "section-two"
+		FrontendNamespace = "default"
+		FrontendEnvName   = "test-nav-template-env"
+		NavTemplateName   = "bundle-one"
+
+		timeout  = time.Second * 10
+		duration = time.Second * 10
+		interval = time.Millisecond * 250
+	)
+
+	ginkgo.Context("When creating a navigation template", func() {
+		ginkgo.It("Should create a navigation config from a template with entries from different frontend resources", func() {
+
+			frontendEnvironment := &crd.FrontendEnvironment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cloud.redhat.com/v1",
+					Kind:       "FrontendEnvironment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      FrontendEnvName,
+					Namespace: FrontendNamespace,
+				},
+				Spec: crd.FrontendEnvironmentSpec{
+					SSO:      "https://something-auth",
+					Hostname: "something",
+					Monitoring: &crd.MonitoringConfig{
+						Mode: "app-interface",
+					},
+					GenerateNavJSON: true,
+				},
+			}
+			frontendOne := &crd.Frontend{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cloud.redhat.com/v1",
+					Kind:       "Frontend",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      FrontendName,
+					Namespace: FrontendNamespace,
+				},
+				Spec: crd.FrontendSpec{
+					EnvName:        FrontendEnvName,
+					Title:          "",
+					DeploymentRepo: "",
+					API: crd.APIInfo{
+						Versions: []string{"v1"},
+					},
+					Frontend: crd.FrontendInfo{
+						Paths: []string{"/things/test"},
+					},
+					Image: "my-image:version",
+					Module: &crd.FedModule{
+						ManifestLocation: "/apps/inventory/fed-mods.json",
+						Modules:          []crd.Module{},
+					},
+					ChromeNavigation: []*crd.ChromeNavigation{
+						{
+							Bundle:    NavTemplateName,
+							SectionId: SectionName,
+							NavItems: []*crd.ChromeNavItem{
+								{
+									Href:  "/fe-one-section-one",
+									Title: "FE One Section One",
+									ID:    "fe-one-section-one",
+								},
+							},
+						},
+					},
+				},
+			}
+			frontendTwo := &crd.Frontend{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cloud.redhat.com/v1",
+					Kind:       "Frontend",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      FrontendName2,
+					Namespace: FrontendNamespace,
+				},
+				Spec: crd.FrontendSpec{
+					EnvName:        FrontendEnvName,
+					Title:          "",
+					DeploymentRepo: "",
+					API: crd.APIInfo{
+						Versions: []string{"v1"},
+					},
+					Frontend: crd.FrontendInfo{
+						Paths: []string{"/things/test/2"},
+					},
+					Image: "my-image:version",
+					Module: &crd.FedModule{
+						ManifestLocation: "/apps/foo/fed-mods.json",
+						Modules:          []crd.Module{},
+					},
+					ChromeNavigation: []*crd.ChromeNavigation{
+						{
+							Bundle:    NavTemplateName,
+							SectionId: SectionName2,
+							NavItems: []*crd.ChromeNavItem{
+								{
+									Href:  "/fe-two-section-one",
+									Title: "FE Two Section One",
+									ID:    "fe-two-section-one",
+								},
+								{
+									Title:      "FE Two Section two",
+									ID:         "fe-two-section-two",
+									Expandable: true,
+									Routes: []crd.ChromeNavItem{
+										{
+											Href:  "/fe-two-section-two/nested",
+											Title: "Nested",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			navigationTemplate := &crd.NavTemplate{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "NavTemplate",
+					APIVersion: "cloud.redhat.com/v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NavTemplateName,
+					Namespace: FrontendNamespace,
+				},
+				Spec: crd.NavTemplateSpec{
+					ID:      NavTemplateName,
+					EnvName: FrontendEnvName,
+					Title:   "Test Bundle",
+					MountPoints: []string{
+						fmt.Sprintf("%s.%s", FrontendName, SectionName),
+						fmt.Sprintf("%s.%s", FrontendName2, SectionName2),
+					},
+				},
+			}
+
+			ctx := context.Background()
+			gomega.Expect(k8sClient.Create(ctx, frontendEnvironment)).Should(gomega.Succeed())
+			gomega.Expect(k8sClient.Create(ctx, frontendOne)).Should(gomega.Succeed())
+			gomega.Expect(k8sClient.Create(ctx, frontendTwo)).Should(gomega.Succeed())
+			gomega.Expect(k8sClient.Create(ctx, navigationTemplate)).Should(gomega.Succeed())
+
+			createdConfigMap := &v1.ConfigMap{}
+			configMapLookupKey := types.NamespacedName{Name: FrontendEnvName, Namespace: FrontendNamespace}
+			gomega.Eventually(func() bool {
+				err := k8sClient.Get(ctx, configMapLookupKey, createdConfigMap)
+				if err != nil {
+					return err == nil
+				}
+				fmt.Println("******************************", len(createdConfigMap.Data))
+				return len(createdConfigMap.Data) == 10
+			}, timeout, interval).Should(gomega.BeTrue())
+		})
+	})
+})

@@ -1,0 +1,12 @@
+apiVersion: cloud.redhat.com/v1alpha1
+kind: NavTemplate
+metadata:
+  name: insights-nav-template
+spec:
+  id: insights
+  title: RHEL
+  mountPoints:
+    - inventory.foo-bar
+    - landing.landingTest
+    - inventory.foo-bar
+  envName: env-boot

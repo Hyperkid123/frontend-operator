@@ -2,4 +2,5 @@
 resources:
 - _v1alpha1_frontend.yaml
 - _v1alpha1_bundle.yaml
+- _v1alpha1_navtemplate.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

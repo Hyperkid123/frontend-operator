@@ -148,6 +148,32 @@ rules:
   - patch
   - update
 - apiGroups:
+  - cloud.redhat.com
+  resources:
+  - navtemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cloud.redhat.com
+  resources:
+  - navtemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cloud.redhat.com
+  resources:
+  - navtemplates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - prometheuses

@@ -1,0 +1,27 @@
+# permissions for end users to view navtemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: navtemplate-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: frontend-operator
+    app.kubernetes.io/part-of: frontend-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: navtemplate-viewer-role
+rules:
+- apiGroups:
+  - cloud.redhat.com
+  resources:
+  - navtemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cloud.redhat.com
+  resources:
+  - navtemplates/status
+  verbs:
+  - get

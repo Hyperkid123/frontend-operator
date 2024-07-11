@@ -930,6 +930,53 @@ func (r *FrontendReconciliation) createConfigMap(frontendList *crd.FrontendList)
 	return cfgMap, nil
 }
 
+func (r *FrontendReconciliation) setupNavTemplates(cfgMap *v1.ConfigMap, feList *crd.FrontendList) error {
+	navTemplateList := &crd.NavTemplateList{}
+	if err := r.FRE.Client.List(r.Ctx, navTemplateList, client.MatchingFields{"spec.envName": r.Frontend.Spec.EnvName}); err != nil {
+		return err
+	}
+
+	navBundles := make(map[string][]*crd.ChromeNavItem)
+	for _, navTemplate := range navTemplateList.Items {
+		if navBundles[navTemplate.Spec.ID] == nil {
+			navBundles[navTemplate.Spec.ID] = []*crd.ChromeNavItem{}
+		}
+		for _, mountPoint := range navTemplate.Spec.MountPoints {
+			fragments := strings.Split(mountPoint, ".")
+			// get the app name part of mount point
+			appId := fragments[0]
+			// use the rest as the section ID of a chrome navigation definition
+			partialId := strings.Join(fragments[1:], "")
+			for _, frontend := range feList.Items {
+				if frontend.ObjectMeta.Name == appId {
+					if frontend.Spec.ChromeNavigation != nil {
+						for _, navItem := range frontend.Spec.ChromeNavigation {
+							if navItem.Bundle == navTemplate.Spec.ID && navItem.SectionId == partialId {
+								navBundles[navTemplate.Spec.ID] = append(navBundles[navTemplate.Spec.ID], navItem.NavItems...)
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+
+		navigationData := crd.GeneratedNavTemplate{
+			ID:       navTemplate.Spec.ID,
+			Title:    navTemplate.Spec.Title,
+			NavItems: navBundles[navTemplate.Spec.ID],
+		}
+		jsonData, err := json.Marshal(navigationData)
+		if err != nil {
+			r.FRE.Log.Error(err, fmt.Sprintf("Error marshalling nav bundle %s", navTemplate.Spec.ID))
+			return err
+		}
+		cfgMap.Data[fmt.Sprintf("%s-navigation-generated.json", navTemplate.Spec.ID)] = string(jsonData)
+	}
+
+	return nil
+}
+
 func (r *FrontendReconciliation) populateConfigMap(cfgMap *v1.ConfigMap, cacheMap map[string]crd.Frontend, feList *crd.FrontendList) error {
 	cfgMap.SetOwnerReferences([]metav1.OwnerReference{r.FrontendEnvironment.MakeOwnerReference()})
 	cfgMap.Data = map[string]string{}
@@ -938,6 +985,11 @@ func (r *FrontendReconciliation) populateConfigMap(cfgMap *v1.ConfigMap, cacheMa
 		if err := r.setupBundleData(cfgMap, cacheMap); err != nil {
 			return err
 		}
+
+		if err := r.setupNavTemplates(cfgMap, feList); err != nil {
+			return err
+		}
+
 	}
 
 	fedModules := make(map[string]crd.FedModule)

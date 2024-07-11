@@ -114,6 +114,10 @@ type FrontendReconciler struct {
 //+kubebuilder:rbac:groups=cloud.redhat.com,resources=bundles/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cloud.redhat.com,resources=bundles/finalizers,verbs=update
 
+//+kubebuilder:rbac:groups=cloud.redhat.com,resources=navtemplates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cloud.redhat.com,resources=navtemplates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=cloud.redhat.com,resources=navtemplates/finalizers,verbs=update
+
 // +kubebuilder:rbac:groups="",resources=serviceaccounts;configmaps;services;secrets;persistentvolumeclaims;events;namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;create;update;watch;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -272,6 +276,13 @@ func (r *FrontendReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	if err := cache.IndexField(
+		context.TODO(), &crd.NavTemplate{}, "spec.envName", func(o client.Object) []string {
+			return []string{o.(*crd.NavTemplate).Spec.EnvName}
+		}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&crd.Frontend{}, builder.WithPredicates(defaultPredicate(r.Log, "frontend"))).
 		Watches(
@@ -281,6 +292,10 @@ func (r *FrontendReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&crd.FrontendEnvironment{},
 			handler.EnqueueRequestsFromMapFunc(r.appsToEnqueueUponFrontendEnvironmentUpdate()),
+		).
+		Watches(
+			&crd.NavTemplate{},
+			handler.EnqueueRequestsFromMapFunc(r.appsToEnqueueUponNavTemplateUpdate()),
 		).
 		Owns(&apps.Deployment{}).
 		Owns(&networking.Ingress{}).
@@ -389,6 +404,51 @@ func (r *FrontendReconciler) appsToEnqueueUponFrontendEnvironmentUpdate() handle
 
 		frontendList := crd.FrontendList{}
 		if err := r.Client.List(ctx, &frontendList, client.MatchingFields{"spec.envName": fe.Name}); err != nil {
+			r.Log.Error(err, "Failed to List Frontends")
+			return nil
+		}
+
+		// Filter based on base attribute
+
+		for _, frontend := range frontendList.Items {
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      frontend.Name,
+					Namespace: frontend.Namespace,
+				},
+			})
+		}
+
+		return reqs
+	}
+}
+
+func (r *FrontendReconciler) appsToEnqueueUponNavTemplateUpdate() handler.MapFunc {
+	return func(ctx context.Context, clientObject client.Object) []reconcile.Request {
+		reqs := []reconcile.Request{}
+		obj := types.NamespacedName{
+			Name:      clientObject.GetName(),
+			Namespace: clientObject.GetNamespace(),
+		}
+
+		// Get the NavTemplate resource
+
+		nt := crd.NavTemplate{}
+		err := r.Client.Get(ctx, obj, &nt)
+
+		if err != nil {
+			if k8serr.IsNotFound(err) {
+				// Must have been deleted
+				return reqs
+			}
+			r.Log.Error(err, "Failed to fetch NavTemplate")
+			return nil
+		}
+
+		// Get all the ClowdApp resources
+
+		frontendList := crd.FrontendList{}
+		if err := r.Client.List(ctx, &frontendList, client.MatchingFields{"spec.envName": nt.Spec.EnvName}); err != nil {
 			r.Log.Error(err, "Failed to List Frontends")
 			return nil
 		}
